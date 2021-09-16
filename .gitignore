@@ -1,0 +1,9 @@
+# cargo
+target/
+
+# sublime text
+*.sublime-project
+*.sublime-workspace
+
+# mac OS
+*.DS_Store
