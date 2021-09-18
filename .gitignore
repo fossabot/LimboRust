@@ -7,3 +7,7 @@ target/
 
 # mac OS
 *.DS_Store
+
+# run
+config/
+logs/
