@@ -1,43 +1,46 @@
 #![allow(dead_code)]
 
-use tokio::net;
-use tokio::runtime::{Runtime, Builder};
-use std::thread;
+use crate::shutdown;
+
 use std::io;
+use std::thread;
+use tokio::net;
 
 pub struct MainServer {
+    shutdown_handle: shutdown::ShutdownHandle
 }
 
 impl MainServer {
-	pub fn new() -> MainServer {
-		MainServer {
-			
-		}
-	}
+    pub fn new(shutdown: shutdown::ShutdownHandle) -> MainServer {
+        MainServer {
+            shutdown_handle: shutdown
+        }
+    }
 
-	pub fn start_server_thread(&self) {
-		info!("Starting server thread...");
+    pub async fn start_server_thread(&mut self) -> io::Result<()> {
+        info!("Starting server thread...");
 
-		thread::Builder::new()
-			.name("Connection Listener".to_string())
-			.spawn(|| {
-				Builder::new_multi_thread()
-				.enable_all()
-				.build()
-				.unwrap()
-				.block_on(start_client_listening());
-			})
-			.unwrap();
-	}
-
+        thread::Builder::new()
+            .name("Main Server Thread".to_string())
+            .spawn(|| {
+                start_server_logic();
+            })?;
+        Ok(())
+    }
 }
 
+#[doc(hidden)]
+fn start_server_logic() {
+    debug!("Starting server logic!");
+}
+
+#[doc(hidden)]
 async fn start_client_listening() -> io::Result<()> {
-	let listener = net::TcpListener::bind("127.0.0.1:30000").await?;
+    let listener = net::TcpListener::bind("127.0.0.1:30000").await?;
 
-	debug!("Started listening for connections!");
+    debug!("Started listening for connections!");
 
-	loop {
-		let (socket, addr) = listener.accept().await?;
-	}
+    loop {
+        let (socket, addr) = listener.accept().await?;
+    }
 }
