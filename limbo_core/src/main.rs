@@ -7,7 +7,7 @@ extern crate log;
 use log4rs;
 
 use network::server::MainServer;
-use shutdown::ShutdownHandle;
+pub use shutdown::ShutdownHandle;
 
 #[tokio::main]
 async fn main() {
