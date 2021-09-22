@@ -15,12 +15,12 @@ pub struct ShutdownHandle {
     #[doc(hidden)]
     signal_receiver: broadcast::Receiver<()>,
     #[doc(hidden)]
-    shutdown_finished: mpsc::Sender<()>
+    shutdown_finished: mpsc::Sender<()>,
 }
 
 impl ShutdownHandle {
     /// Returns a Shutdown handle with the sender ("hook") given.
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `finished_hook` - A Tokio sender from which the corresponding receiver can be used
@@ -57,31 +57,30 @@ impl ShutdownHandle {
         ShutdownHandle {
             signal_sender: sender,
             signal_receiver: receiver,
-            shutdown_finished: finished_hook
+            shutdown_finished: finished_hook,
         }
     }
 
-    
     /// Signals all clones of this Handle to initiate shutdown.
     ///
     /// When the owner of this handle has finished, it should make sure to have this handle go out of scope.
-    /// 
+    ///
     /// # Examples
     /// ```ignore
     /// use tokio::sync::mpsc::channel;
     /// use std::mem::drop;
-    /// 
+    ///
     /// use limbo_core::ShutdownHandle;
-    /// 
+    ///
     /// fn do_something() {
     ///     let (send, mut recv) = channel(1);
     ///     let shutdown_handle = ShutdownHandle::new(send);
-    /// 
+    ///
     ///     // Pass this handle through cloning to all other parts of the program that should know when to shut down
-    /// 
+    ///
     ///     // when we want to shutdown
     ///     shutdown_handle.send_shutdown();
-    /// 
+    ///
     ///     // now we can wait for everything to have shutdown as explained in `ShutdownHandle::new()`
     /// }
     pub fn send_shutdown(&self) {
@@ -89,15 +88,19 @@ impl ShutdownHandle {
     }
 
     /// Polls for the status of this handle's signal status.
+    /// # Returns
+    /// False when a shutdown signal was received.
+    ///
+    /// True when a shutdown signal was received.
     /// # Note
     /// This function does not block.
-    pub fn is_shutdown(&mut self) -> bool {
+    pub fn is_no_shutdown(&mut self) -> bool {
         if let Err(error) = self.signal_receiver.try_recv() {
             if error == broadcast::error::TryRecvError::Empty {
-                return false;
+                return true;
             }
         }
-        true
+        false
     }
 
     /// Waits for this handle to receive a shutdown signal and returns.
@@ -115,7 +118,13 @@ impl std::clone::Clone for ShutdownHandle {
         ShutdownHandle {
             signal_sender: self.signal_sender.clone(),
             signal_receiver: self.signal_sender.subscribe(),
-            shutdown_finished: self.shutdown_finished.clone()
+            shutdown_finished: self.shutdown_finished.clone(),
         }
+    }
+}
+
+impl std::ops::Drop for ShutdownHandle {
+    fn drop(&mut self) {
+        debug!("Dropping handle!");
     }
 }
