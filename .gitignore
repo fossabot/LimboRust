@@ -5,6 +5,9 @@ target/
 *.sublime-project
 *.sublime-workspace
 
+# intellij
+.idea/
+
 # mac OS
 *.DS_Store
 

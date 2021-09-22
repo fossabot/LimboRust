@@ -82,5 +82,8 @@ impl MainServer {
 
     #[doc(hidden)]
     fn tick(&mut self) {
+        while let Ok(client) = self.client_instance_rx.as_mut().unwrap().try_recv() {
+            self.client_connections.push(client);
+        }
     }
 }

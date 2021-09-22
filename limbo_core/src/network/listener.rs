@@ -6,8 +6,9 @@ use crossbeam::channel::Sender;
 use std::net::SocketAddr;
 
 use tokio::sync::mpsc::Receiver;
-use tokio::io::AsyncWriteExt;
+use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
+use bytes::BytesMut;
 
 pub(crate) async fn start_network_listening(
     mut shutdown_handle: ShutdownHandle,
@@ -38,19 +39,38 @@ pub(crate) async fn start_network_listening(
                         let shutdown_handle2 = shutdown_handle.clone();
                         tokio::spawn(async move {
                             debug!("Accepted connection!!");
-                            process_socket(shutdown_handle2, socket, addr, packet_out_rx)
+                            process_socket(shutdown_handle2, socket, addr, packet_out_rx).await;
                         });
                     }
                 }
             }
         }
     }
-
     debug!("Stopped listening for connections");
 }
 
-async fn process_socket(mut shutdown_handle: ShutdownHandle, mut socket: TcpStream, addr: SocketAddr, packet_out_rx: Receiver<()>) {
+async fn process_socket(mut shutdown_handle: ShutdownHandle, mut socket: TcpStream, addr: SocketAddr, mut packet_out_rx: Receiver<()>) {
+    let mut buffer = BytesMut::with_capacity(4096);
 
+    loop {
+        tokio::select! {
+            _ = shutdown_handle.wait_for_shutdown() => {
+                break;
+            }
+            Some(_) = packet_out_rx.recv() => {
+                debug!("Got packet to send!");
+            }
+            Ok(n) = socket.read_buf(&mut buffer) => {
+                if n == 0 {
+                    break;
+                }
+                debug!("Received {} bytes!", n);
+            }
+            else => {
+                debug!("Triggered else branch!");
+            }
+        }
+    }
 }
 
 
