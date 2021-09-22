@@ -1,46 +1,86 @@
-#![allow(dead_code)]
+use crate::network::client::ClientHandler;
+use crate::network::listener::start_network_listening;
+use crate::shutdown::ShutdownHandle;
 
-use crate::shutdown;
+use crossbeam::channel::{unbounded, Receiver};
 
 use std::io;
 use std::thread;
-use tokio::net;
+use std::time::{Duration, Instant};
 
 pub struct MainServer {
-    shutdown_handle: shutdown::ShutdownHandle
+    shutdown_handle: ShutdownHandle,
+    #[doc(hidden)]
+    client_connections: Vec<ClientHandler>,
+    #[doc(hidden)]
+    client_instance_rx: Option<Receiver<ClientHandler>>
 }
 
 impl MainServer {
-    pub fn new(shutdown: shutdown::ShutdownHandle) -> MainServer {
+    pub fn new(shutdown: ShutdownHandle) -> MainServer {
         MainServer {
-            shutdown_handle: shutdown
+            shutdown_handle: shutdown,
+            client_connections: Vec::new(),
+            client_instance_rx: None
         }
     }
 
-    pub async fn start_server_thread(&mut self) -> io::Result<()> {
+    pub async fn start_server_thread(mut self) -> io::Result<()> {
         info!("Starting server thread...");
 
+        let (client_instance_tx, client_instance_rx) = unbounded();
+        let shutdown_handle2 = self.shutdown_handle.clone();
+
+        self.client_instance_rx = Some(client_instance_rx);
         thread::Builder::new()
             .name("Main Server Thread".to_string())
             .spawn(|| {
-                start_server_logic();
+                self.start_server_logic();
             })?;
+
+        tokio::spawn(start_network_listening(
+            shutdown_handle2,
+            client_instance_tx,
+        ));
+
         Ok(())
     }
-}
 
-#[doc(hidden)]
-fn start_server_logic() {
-    debug!("Starting server logic!");
-}
+    #[doc(hidden)]
+    fn start_server_logic(mut self) {
+        debug!("Starting server logic!");
+        let mut old_time = Instant::now();
+        let mut time_measured = 0;
 
-#[doc(hidden)]
-async fn start_client_listening() -> io::Result<()> {
-    let listener = net::TcpListener::bind("127.0.0.1:30000").await?;
+        while self.shutdown_handle.is_no_shutdown() {
+            let current_time = Instant::now();
+            let mut time_since_last_cycle = current_time.duration_since(old_time).as_millis();
 
-    debug!("Started listening for connections!");
+            if time_since_last_cycle > 2000 {
+                warn!(
+                    "Can't keep up! Skipping {} tick(s)",
+                    time_since_last_cycle / 50
+                );
+                time_since_last_cycle = 2000;
+            }
 
-    loop {
-        let (socket, addr) = listener.accept().await?;
+            time_measured += time_since_last_cycle;
+            old_time = current_time;
+
+            while time_measured > 50 {
+                time_measured -= 50;
+                self.tick();
+            }
+
+            thread::sleep(Duration::from_millis(
+                (u64::MAX as u128).min(1.max(50 - time_measured)) as u64,
+            ));
+        }
+
+        debug!("Stopping server logic!");
+    }
+
+    #[doc(hidden)]
+    fn tick(&mut self) {
     }
 }

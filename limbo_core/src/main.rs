@@ -18,20 +18,18 @@ async fn main() {
     let (finished_tx, mut finished_rx) = tokio::sync::mpsc::channel(1);
     let mut shutdown_handle = ShutdownHandle::new(finished_tx);
 
-    {
-        let mut main_server = MainServer::new(shutdown_handle.clone());
-        if let Err(error) = main_server.start_server_thread().await {
-            error!("Couldn't start server thread due to {}", error);
-            return;
-        }
+    let main_server = MainServer::new(shutdown_handle.clone());
+    if let Err(error) = main_server.start_server_thread().await {
+        error!("Couldn't start server thread due to {}", error);
+        return;
     }
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
-            debug!("Shutting down server!");
+            info!("Shutting down server!");
             shutdown_handle.send_shutdown();
-        },
-        _ = shutdown_handle.wait_for_shutdown() => {},
+        }
+        _ = shutdown_handle.wait_for_shutdown() => {}
     }
 
     std::mem::drop(shutdown_handle);
