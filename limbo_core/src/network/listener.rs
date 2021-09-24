@@ -1,14 +1,16 @@
-use crate::network::client::ClientHandler;
-use crate::shutdown::ShutdownHandle;
-
-use crossbeam::channel::Sender;
-
+use std::io::Cursor;
 use std::net::SocketAddr;
 
-use tokio::sync::mpsc::Receiver;
+use bytes::{Buf, Bytes, BytesMut};
+use crossbeam::channel::Sender;
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
-use bytes::BytesMut;
+use tokio::sync::mpsc::Receiver;
+
+use limbo_protocol::{ByteLimitCheck, PacketBufferRead};
+
+use crate::network::client::ClientHandler;
+use crate::shutdown::ShutdownHandle;
 
 pub(crate) async fn start_network_listening(
     mut shutdown_handle: ShutdownHandle,
@@ -49,7 +51,12 @@ pub(crate) async fn start_network_listening(
     debug!("Stopped listening for connections");
 }
 
-async fn process_socket(mut shutdown_handle: ShutdownHandle, mut socket: TcpStream, addr: SocketAddr, mut packet_out_rx: Receiver<()>) {
+async fn process_socket(
+    mut shutdown_handle: ShutdownHandle,
+    mut socket: TcpStream,
+    addr: SocketAddr,
+    mut packet_out_rx: Receiver<()>,
+) {
     let mut buffer = BytesMut::with_capacity(4096);
 
     loop {
@@ -62,22 +69,56 @@ async fn process_socket(mut shutdown_handle: ShutdownHandle, mut socket: TcpStre
             }
             Ok(n) = socket.read_buf(&mut buffer) => {
                 if n == 0 {
-                    break;
+                    //if buffer.is_empty() {
+                        break;
+                    //}
                 }
+
+                if let Some(mut frame) = parse_frame(&buffer) {
+                    if let Ok(id) = frame.read_var_i32() {
+                        debug!("Packet id = {}", id);
+                    }
+                    if let Ok(version) = frame.read_var_i32() {
+                        debug!("Protocol version = {}", version);
+                    }
+                    if let Ok(server_addr) = frame.read_string(32767) {
+                        debug!("Server address = {}", server_addr);
+                    }
+                    if let Ok(port) = frame.read_u16() {
+                        debug!("Server port = {}", port);
+                    }
+                    if let Ok(next_state) = frame.read_var_i32() {
+                        debug!("Next state = {}", next_state);
+                    }
+                    debug!("Bytes in frame left = {}", frame.remaining());
+                }
+
                 debug!("Received {} bytes!", n);
             }
-            else => {
-                debug!("Triggered else branch!");
-            }
+            else => {}
         }
     }
 }
 
+fn parse_frame(buffer: &BytesMut) -> Option<Bytes> {
+    let mut buf = Cursor::new(&buffer[..]);
+    let mut length_bytes: [u8; 3] = [0; 3];
+    for i in 0..3 {
+        if buf.remaining() == 0 {
+            return None;
+        }
 
+        length_bytes[i] = buf.get_u8();
 
-
-
-
-
-
-
+        if length_bytes[i] & 0b1000_0000 == 0 {
+            let mut length_buf = Cursor::new(&length_bytes[..]);
+            if let Ok(length) = length_buf.read_var_i32() {
+                debug!("Frame is {} bytes long", length);
+                if let Ok(_) = buf.ensure_bytes_available(length as usize) {
+                    return Some(buf.copy_to_bytes(length as usize));
+                }
+            }
+        }
+    }
+    None
+}
