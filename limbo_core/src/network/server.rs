@@ -13,7 +13,7 @@ pub struct MainServer {
     #[doc(hidden)]
     client_connections: Vec<ClientHandler>,
     #[doc(hidden)]
-    client_instance_rx: Option<Receiver<ClientHandler>>
+    client_instance_rx: Option<Receiver<ClientHandler>>,
 }
 
 impl MainServer {
@@ -21,7 +21,7 @@ impl MainServer {
         MainServer {
             shutdown_handle: shutdown,
             client_connections: Vec::new(),
-            client_instance_rx: None
+            client_instance_rx: None,
         }
     }
 

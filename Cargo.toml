@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-	"limbo_core"
+	"limbo_core",
+	"limbo_protocol"
 ]
